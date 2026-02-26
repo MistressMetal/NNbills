@@ -1,1 +1,373 @@
+<!DOCTYPE html>
 
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml">
+<head>
+    <meta charset="utf-8" />
+    <title>Legiscan Bill Info</title>
+</head><body>
+    <div class="container">
+        <div class="header">
+            <div class="header-left">
+                <div class="bill-badge">Pennsylvania Legislature</div>
+                <h1>House Bill <span>123</span></h1>
+                <p class="header-sub">Powered by LegiScan API · PA · Current Session</p>
+            </div>
+        </div>
+
+        <div class="api-form">
+            <label>LegiScan API Key</label>
+            <div class="input-row">
+                <input type="text" id="apiKey" placeholder="Enter your LegiScan API key..." autocomplete="off" spellcheck="false">
+                <button class="btn" id="fetchBtn" onclick="fetchBill()">Load Bill →</button>
+            </div>
+            <p class="api-hint">
+                Get a free API key at <a href="https://legiscan.com/legiscan" target="_blank">legiscan.com/legiscan</a>.
+                Public keys include 30,000 queries/month.
+            </p>
+        </div>
+
+        <div class="status" id="statusMsg"></div>
+        <div class="loading" id="loadingEl">
+            <div class="spinner"></div>
+            <p>Fetching PA HB 123 from LegiScan...</p>
+        </div>
+
+        <div id="bill-content"></div>
+
+        <div class="footer">
+            <span class="footer-text">Data provided by <a href="https://legiscan.com" target="_blank">LegiScan</a></span>
+            <span class="footer-text">Pennsylvania House Bill 123</span>
+        </div>
+    </div>
+</html>
+<script>
+    const key = "9f4a12e0e34a9170d439cabce98bb15c"
+    const BILL_STATUS = {
+        1: ['Introduced', 'intro'],
+        2: ['Engrossed', 'enroll'],
+        3: ['Enrolled', 'enroll'],
+        4: ['Passed', 'pass'],
+        5: ['Vetoed', 'fail'],
+        6: ['Failed/Dead', 'fail']
+    };
+
+    const BILL_PROGRESS = {
+        1: 'Introduced', 2: 'Engrossed', 3: 'Enrolled', 4: 'Passed',
+        5: 'Vetoed', 6: 'Failed/Dead', 7: 'Veto Override',
+        8: 'Chapter/Act/Statute', 9: 'Committee Referral',
+        10: 'Committee Report Pass', 11: 'Committee Report DNP'
+    };
+
+    const SPONSOR_TYPE = {
+        0: 'Sponsor', 1: 'Primary', 2: 'Co-Sponsor'
+    };
+
+    function setStatus(msg, isError = false) {
+        const el = document.getElementById('statusMsg');
+        el.textContent = msg;
+        el.className = 'status' + (isError ? ' error' : '');
+        el.style.display = msg ? 'block' : 'none';
+    }
+
+    function setLoading(show) {
+        document.getElementById('loadingEl').style.display = show ? 'block' : 'none';
+    }
+
+    function getInitials(name) {
+        return name.split(' ').filter(Boolean).map(w => w[0]).join('').toUpperCase().slice(0, 2);
+    }
+
+    function formatDate(d) {
+        if (!d || d === '0000-00-00') return '—';
+        const dt = new Date(d + 'T00:00:00');
+        return dt.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+    }
+
+    async function fetchBill() {
+        const key = document.getElementById('apiKey').value.trim();
+        if (!key) { setStatus('Please enter your LegiScan API key.', true); return; }
+
+        setStatus('');
+        setLoading(true);
+        document.getElementById('bill-content').style.display = 'none';
+        document.getElementById('bill-content').innerHTML = '';
+        document.getElementById('fetchBtn').disabled = true;
+
+        try {
+            // Step 1: Search for PA HB123
+            const searchUrl = `https://api.legiscan.com/?key=${encodeURIComponent(key)}&op=search&state=PA&bill=HB123`;
+            const searchRes = await fetch(searchUrl);
+            const searchData = await searchRes.json();
+
+            if (searchData.status === 'ERROR') {
+                throw new Error(searchData.alert?.message || 'LegiScan API returned an error.');
+            }
+
+            const results = searchData.searchresult;
+            const summary = results.summary;
+
+            // Get first actual result (skip 'summary' key)
+            const billKeys = Object.keys(results).filter(k => k !== 'summary');
+            if (!billKeys.length) throw new Error('No results found for PA HB123.');
+
+            // Find the most recent HB 123
+            const bills = billKeys.map(k => results[k]).sort((a, b) => b.session_id - a.session_id);
+            const topBill = bills[0];
+            const billId = topBill.bill_id;
+
+            setStatus(`Found bill (ID: ${billId}). Loading full details...`);
+
+            // Step 2: Get full bill details
+            const billUrl = `https://api.legiscan.com/?key=${encodeURIComponent(key)}&op=getBill&id=${billId}`;
+            const billRes = await fetch(billUrl);
+            const billData = await billRes.json();
+
+            if (billData.status === 'ERROR') {
+                throw new Error(billData.alert?.message || 'Could not retrieve bill details.');
+            }
+
+            const bill = billData.bill;
+            setStatus('');
+            renderBill(bill, bills);
+
+        } catch (err) {
+            setStatus('Error: ' + err.message, true);
+        } finally {
+            setLoading(false);
+            document.getElementById('fetchBtn').disabled = false;
+        }
+    }
+
+    function renderBill(bill, allResults) {
+        const content = document.getElementById('bill-content');
+        content.style.display = 'block';
+
+        const [statusLabel, statusClass] = BILL_STATUS[bill.status] || ['Unknown', 'default'];
+
+        let html = '';
+
+        // ── Hero ──────────────────────────────────────────────────────────────
+        html += `<div class="bill-hero">
+      <div class="bill-status-badge status-${statusClass}">
+        <span>●</span> ${statusLabel}
+      </div>
+      <h2>${bill.title || 'Untitled Bill'}</h2>
+      ${bill.description ? `<p class="bill-desc">${bill.description}</p>` : ''}
+    </div>`;
+
+        // ── Overview ──────────────────────────────────────────────────────────
+        html += `<div class="section">
+      <div class="section-header">
+        <div class="section-dot"></div>
+        <span class="section-label">Overview</span>
+      </div>
+      <div class="section-body">
+        <div class="kv-grid">
+          ${kv('Bill Number', bill.bill_number || 'HB 123')}
+          ${kv('State', 'Pennsylvania (PA)')}
+          ${kv('Session', bill.session?.session_name || '—')}
+          ${kv('Chamber', bill.body_name || '—')}
+          ${kv('Bill Type', bill.bill_type_name || '—')}
+          ${kv('Status', statusLabel)}
+          ${kv('Last Action Date', formatDate(bill.last_action_date))}
+          ${kv('Bill ID', bill.bill_id || '—')}
+          ${bill.url ? kvLink('LegiScan Page', bill.url, 'View →') : kv('LegiScan Page', '—')}
+          ${bill.state_link ? kvLink('Official State Page', bill.state_link, 'View →') : ''}
+          ${kv('Introduced', formatDate(bill.status_date))}
+          ${kv('Change Hash', bill.change_hash ? bill.change_hash.slice(0, 8) + '…' : '—')}
+        </div>
+      </div>
+    </div>`;
+
+        // ── Last Action ────────────────────────────────────────────────────────
+        if (bill.last_action) {
+            html += `<div class="section">
+        <div class="section-header">
+          <div class="section-dot"></div>
+          <span class="section-label">Last Action</span>
+        </div>
+        <div class="section-body">
+          <div class="kv-grid">
+            ${kv('Date', formatDate(bill.last_action_date))}
+            ${kv('Action', bill.last_action)}
+          </div>
+        </div>
+      </div>`;
+        }
+
+        // ── Sponsors ───────────────────────────────────────────────────────────
+        const sponsors = bill.sponsors || [];
+        html += `<div class="section">
+      <div class="section-header">
+        <div class="section-dot"></div>
+        <span class="section-label">Sponsors (${sponsors.length})</span>
+      </div>
+      <div class="section-body">`;
+
+        if (sponsors.length) {
+            html += `<div class="sponsors-list">`;
+            sponsors.forEach(s => {
+                const typeLabel = SPONSOR_TYPE[s.sponsor_type_id] || 'Sponsor';
+                const party = s.party || '';
+                const district = s.district ? `District ${s.district}` : '';
+                html += `<div class="sponsor-item">
+          <div class="sponsor-avatar">${getInitials(s.name)}</div>
+          <div class="sponsor-info">
+            <div class="sponsor-name">${s.name}</div>
+            <div class="sponsor-meta">${[party, district].filter(Boolean).join(' · ') || '—'}</div>
+          </div>
+          <div class="sponsor-type-badge">${typeLabel}</div>
+        </div>`;
+            });
+            html += `</div>`;
+        } else {
+            html += `<div class="empty">No sponsor information available</div>`;
+        }
+
+        html += `</div></div>`;
+
+        // ── Progress History ───────────────────────────────────────────────────
+        const progress = bill.progress || [];
+        html += `<div class="section">
+      <div class="section-header">
+        <div class="section-dot"></div>
+        <span class="section-label">Legislative Progress (${progress.length})</span>
+      </div>
+      <div class="section-body">`;
+
+        if (progress.length) {
+            html += `<div class="progress-list">`;
+            [...progress].reverse().forEach(p => {
+                html += `<div class="progress-item">
+          <div class="progress-date">${formatDate(p.date)}</div>
+          <div class="progress-dot"></div>
+          <div class="progress-label">${BILL_PROGRESS[p.event] || 'Action'}</div>
+        </div>`;
+            });
+            html += `</div>`;
+        } else {
+            html += `<div class="empty">No progress history available</div>`;
+        }
+
+        html += `</div></div>`;
+
+        // ── Votes ──────────────────────────────────────────────────────────────
+        const votes = bill.votes || [];
+        html += `<div class="section">
+      <div class="section-header">
+        <div class="section-dot"></div>
+        <span class="section-label">Votes (${votes.length})</span>
+      </div>
+      <div class="section-body">`;
+
+        if (votes.length) {
+            html += `<div class="votes-grid">`;
+            votes.forEach(v => {
+                const total = (v.yea || 0) + (v.nay || 0) + (v.nv || 0);
+                const pctYea = total ? Math.round((v.yea / total) * 100) : 0;
+                const pctNay = total ? Math.round((v.nay / total) * 100) : 0;
+                html += `<div class="vote-card">
+          <div class="vote-desc">${v.desc || 'Vote'}</div>
+          <div class="vote-meta">${formatDate(v.date)} · ${v.chamber || ''} · ${v.passed === 1 ? '✓ Passed' : '✗ Failed'}</div>
+          <div class="vote-bars">
+            <div class="vote-bar-row">
+              <span class="vote-bar-label">Yea</span>
+              <div class="vote-bar-track"><div class="vote-bar-fill yea" style="width:${pctYea}%"></div></div>
+              <span class="vote-bar-count">${v.yea ?? '—'}</span>
+            </div>
+            <div class="vote-bar-row">
+              <span class="vote-bar-label">Nay</span>
+              <div class="vote-bar-track"><div class="vote-bar-fill nay" style="width:${pctNay}%"></div></div>
+              <span class="vote-bar-count">${v.nay ?? '—'}</span>
+            </div>
+            ${v.nv != null ? `<div class="vote-bar-row">
+              <span class="vote-bar-label">Abs</span>
+              <div class="vote-bar-track"><div class="vote-bar-fill abs" style="width:${total ? Math.round((v.nv / total) * 100) : 0}%"></div></div>
+              <span class="vote-bar-count">${v.nv}</span>
+            </div>` : ''}
+          </div>
+        </div>`;
+            });
+            html += `</div>`;
+        } else {
+            html += `<div class="empty">No vote records available</div>`;
+        }
+
+        html += `</div></div>`;
+
+        // ── Documents / Texts ──────────────────────────────────────────────────
+        const texts = bill.texts || [];
+        const amendments = bill.amendments || [];
+        const supplements = bill.supplements || [];
+        const allDocs = [
+            ...texts.map(t => ({ ...t, dtype: 'Text', mime: t.mime_type })),
+            ...amendments.map(a => ({ ...a, dtype: 'Amendment', mime: a.mime_type })),
+            ...supplements.map(s => ({ ...s, dtype: 'Supplement', mime: s.mime_type })),
+        ];
+
+        html += `<div class="section">
+      <div class="section-header">
+        <div class="section-dot"></div>
+        <span class="section-label">Documents (${allDocs.length})</span>
+      </div>
+      <div class="section-body">`;
+
+        if (allDocs.length) {
+            html += `<div class="docs-list">`;
+            allDocs.forEach(d => {
+                const ext = (d.mime || '').includes('pdf') ? 'PDF' : (d.mime || '').includes('html') ? 'HTML' : 'DOC';
+                html += `<a class="doc-item" href="${d.state_link || d.url || '#'}" target="_blank" rel="noopener">
+          <div class="doc-icon">${ext}</div>
+          <div class="doc-info">
+            <div class="doc-name">${d.dtype}: ${d.type_id ? 'v' + d.type_id : ''} ${d.description ? '— ' + d.description : ''}</div>
+            <div class="doc-meta">${formatDate(d.date) || '—'}${d.mime ? ' · ' + d.mime : ''}</div>
+          </div>
+          <div class="doc-link">Open ↗</div>
+        </a>`;
+            });
+            html += `</div>`;
+        } else {
+            html += `<div class="empty">No documents available</div>`;
+        }
+
+        html += `</div></div>`;
+
+        // ── Other Sessions with HB123 ──────────────────────────────────────────
+        if (allResults.length > 1) {
+            html += `<div class="section">
+        <div class="section-header">
+          <div class="section-dot"></div>
+          <span class="section-label">Other Sessions with HB 123 (${allResults.length - 1})</span>
+        </div>
+        <div class="section-body">
+          <div class="kv-grid">`;
+            allResults.slice(1).forEach(b => {
+                html += `${kv(b.session_title || 'Session ' + b.session_id, b.title || '—')}`;
+            });
+            html += `</div></div></div>`;
+        }
+
+        content.innerHTML = html;
+    }
+
+    function kv(label, value) {
+        return `<div class="kv-item">
+      <div class="kv-label">${label}</div>
+      <div class="kv-value">${value}</div>
+    </div>`;
+    }
+
+    function kvLink(label, href, text) {
+        return `<div class="kv-item">
+      <div class="kv-label">${label}</div>
+      <div class="kv-value"><a href="${href}" target="_blank" rel="noopener">${text}</a></div>
+    </div>`;
+    }
+
+    // Allow pressing Enter in input
+    document.getElementById('apiKey').addEventListener('keydown', e => {
+        if (e.key === 'Enter') fetchBill();
+    });
+</script>
+</body>
+</html>
