@@ -4,41 +4,36 @@
 <head>
     <meta charset="utf-8" />
     <title>Legiscan Bill Info</title>
+
 </head><body>
-    <div class="container">
-        <div class="header">
-            <div class="header-left">
-                <div class="bill-badge">Pennsylvania Legislature</div>
-                <h1>House Bill <span>123</span></h1>
-                <p class="header-sub">Powered by LegiScan API · PA · Current Session</p>
-            </div>
-        </div>
+           <div class="container">
+               <div class="header">
+                   <div class="header-left">
+                       <div class="bill-badge">Pennsylvania Legislature</div>
+                       <h1>PA House Bill Information</h1>
+                       <p class="header-sub">Powered by LegiScan API · PA · Current Session</p>
+                   </div>
+               </div>
+               <div class="bill-form">
+                   <label>House Bill</label>
+                   <div class="input-row">
+                       <input type="text" id="billNo" placeholder="Enter the Bill Number (HB###)..." autocomplete="off" spellcheck="false">
+                       <button class="btn" id="fetchBtn" onclick="fetchBill()">Load Bill →</button>
+                   </div>
+               </div>
 
-        <div class="api-form">
-            <label>LegiScan API Key</label>
-            <div class="input-row">
-                <input type="text" id="apiKey" placeholder="Enter your LegiScan API key..." autocomplete="off" spellcheck="false">
-                <button class="btn" id="fetchBtn" onclick="fetchBill()">Load Bill →</button>
-            </div>
-            <p class="api-hint">
-                Get a free API key at <a href="https://legiscan.com/legiscan" target="_blank">legiscan.com/legiscan</a>.
-                Public keys include 30,000 queries/month.
-            </p>
-        </div>
+               <div class="status" id="statusMsg"></div>
+               <div class="loading" id="loadingEl">
+                   <div class="spinner"></div>
+                   <p>Fetching from LegiScan...</p>
+               </div>
 
-        <div class="status" id="statusMsg"></div>
-        <div class="loading" id="loadingEl">
-            <div class="spinner"></div>
-            <p>Fetching PA HB 123 from LegiScan...</p>
-        </div>
+               <div id="bill-content"></div>
 
-        <div id="bill-content"></div>
-
-        <div class="footer">
-            <span class="footer-text">Data provided by <a href="https://legiscan.com" target="_blank">LegiScan</a></span>
-            <span class="footer-text">Pennsylvania House Bill 123</span>
-        </div>
-    </div>
+               <div class="footer">
+                   <span class="footer-text">Data provided by <a href="https://legiscan.com" target="_blank">LegiScan</a></span>
+               </div>
+           </div>
 </html>
 <script>
     const key = "9f4a12e0e34a9170d439cabce98bb15c"
@@ -83,9 +78,12 @@
         return dt.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
     }
 
+    fetchBill();
     async function fetchBill() {
-        const key = document.getElementById('apiKey').value.trim();
-        if (!key) { setStatus('Please enter your LegiScan API key.', true); return; }
+        const key = ${{ LEGI_KEY }};
+
+        const billNumber = document.getElementById('billNo').value.trim();
+        if (!key) { setStatus('Please enter the bill number.', true); return; }
 
         setStatus('');
         setLoading(true);
@@ -94,8 +92,7 @@
         document.getElementById('fetchBtn').disabled = true;
 
         try {
-            // Step 1: Search for PA HB123
-            const searchUrl = `https://api.legiscan.com/?key=${encodeURIComponent(key)}&op=search&state=PA&bill=HB123`;
+            const searchUrl = `https://api.legiscan.com/?key=${encodeURIComponent(key)}&op=search&state=PA&bill=${billNumber}`;
             const searchRes = await fetch(searchUrl);
             const searchData = await searchRes.json();
 
@@ -106,18 +103,15 @@
             const results = searchData.searchresult;
             const summary = results.summary;
 
-            // Get first actual result (skip 'summary' key)
             const billKeys = Object.keys(results).filter(k => k !== 'summary');
-            if (!billKeys.length) throw new Error('No results found for PA HB123.');
+            if (!billKeys.length) throw new Error('No results found for PA ${billNumber}.');
 
-            // Find the most recent HB 123
             const bills = billKeys.map(k => results[k]).sort((a, b) => b.session_id - a.session_id);
             const topBill = bills[0];
             const billId = topBill.bill_id;
 
             setStatus(`Found bill (ID: ${billId}). Loading full details...`);
 
-            // Step 2: Get full bill details
             const billUrl = `https://api.legiscan.com/?key=${encodeURIComponent(key)}&op=getBill&id=${billId}`;
             const billRes = await fetch(billUrl);
             const billData = await billRes.json();
@@ -146,8 +140,9 @@
 
         let html = '';
 
-        // ── Hero ──────────────────────────────────────────────────────────────
-        html += `<div class="bill-hero">
+        html += `
+        <hr>
+        <div class="bill-hero">
       <div class="bill-status-badge status-${statusClass}">
         <span>●</span> ${statusLabel}
       </div>
@@ -155,15 +150,15 @@
       ${bill.description ? `<p class="bill-desc">${bill.description}</p>` : ''}
     </div>`;
 
-        // ── Overview ──────────────────────────────────────────────────────────
-        html += `<div class="section">
+        html += `<hr>
+        <div class="section">
       <div class="section-header">
         <div class="section-dot"></div>
         <span class="section-label">Overview</span>
       </div>
       <div class="section-body">
         <div class="kv-grid">
-          ${kv('Bill Number', bill.bill_number || 'HB 123')}
+          ${kv('Bill Number', bill.bill_number || billNumber)}
           ${kv('State', 'Pennsylvania (PA)')}
           ${kv('Session', bill.session?.session_name || '—')}
           ${kv('Chamber', bill.body_name || '—')}
@@ -179,9 +174,9 @@
       </div>
     </div>`;
 
-        // ── Last Action ────────────────────────────────────────────────────────
         if (bill.last_action) {
-            html += `<div class="section">
+            html += `
+            <hr><div class="section">
         <div class="section-header">
           <div class="section-dot"></div>
           <span class="section-label">Last Action</span>
@@ -195,9 +190,8 @@
       </div>`;
         }
 
-        // ── Sponsors ───────────────────────────────────────────────────────────
         const sponsors = bill.sponsors || [];
-        html += `<div class="section">
+        html += `<hr><div class="section">
       <div class="section-header">
         <div class="section-dot"></div>
         <span class="section-label">Sponsors (${sponsors.length})</span>
@@ -205,18 +199,16 @@
       <div class="section-body">`;
 
         if (sponsors.length) {
-            html += `<div class="sponsors-list">`;
+            html += `<hr><div class="sponsors-list">`;
             sponsors.forEach(s => {
                 const typeLabel = SPONSOR_TYPE[s.sponsor_type_id] || 'Sponsor';
                 const party = s.party || '';
                 const district = s.district ? `District ${s.district}` : '';
                 html += `<div class="sponsor-item">
-          <div class="sponsor-avatar">${getInitials(s.name)}</div>
+
           <div class="sponsor-info">
-            <div class="sponsor-name">${s.name}</div>
-            <div class="sponsor-meta">${[party, district].filter(Boolean).join(' · ') || '—'}</div>
+            <div class="sponsor-name">${s.name}  ${[party, district].filter(Boolean).join(' · ') || '—'}  ${typeLabel}</div>
           </div>
-          <div class="sponsor-type-badge">${typeLabel}</div>
         </div>`;
             });
             html += `</div>`;
@@ -226,17 +218,16 @@
 
         html += `</div></div>`;
 
-        // ── Progress History ───────────────────────────────────────────────────
         const progress = bill.progress || [];
-        html += `<div class="section">
+        html += `<hr><div class="section">
       <div class="section-header">
         <div class="section-dot"></div>
-        <span class="section-label">Legislative Progress (${progress.length})</span>
+        <span class="section-label">Progress (${progress.length})</span>
       </div>
       <div class="section-body">`;
 
         if (progress.length) {
-            html += `<div class="progress-list">`;
+            html += `<hr><div class="progress-list">`;
             [...progress].reverse().forEach(p => {
                 html += `<div class="progress-item">
           <div class="progress-date">${formatDate(p.date)}</div>
@@ -246,14 +237,13 @@
             });
             html += `</div>`;
         } else {
-            html += `<div class="empty">No progress history available</div>`;
+            html += `<hr><div class="empty">No progress history available</div>`;
         }
 
         html += `</div></div>`;
 
-        // ── Votes ──────────────────────────────────────────────────────────────
         const votes = bill.votes || [];
-        html += `<div class="section">
+        html += `<hr><div class="section">
       <div class="section-header">
         <div class="section-dot"></div>
         <span class="section-label">Votes (${votes.length})</span>
@@ -261,7 +251,7 @@
       <div class="section-body">`;
 
         if (votes.length) {
-            html += `<div class="votes-grid">`;
+            html += `<hr><div class="votes-grid">`;
             votes.forEach(v => {
                 const total = (v.yea || 0) + (v.nay || 0) + (v.nv || 0);
                 const pctYea = total ? Math.round((v.yea / total) * 100) : 0;
@@ -295,7 +285,6 @@
 
         html += `</div></div>`;
 
-        // ── Documents / Texts ──────────────────────────────────────────────────
         const texts = bill.texts || [];
         const amendments = bill.amendments || [];
         const supplements = bill.supplements || [];
@@ -305,7 +294,7 @@
             ...supplements.map(s => ({ ...s, dtype: 'Supplement', mime: s.mime_type })),
         ];
 
-        html += `<div class="section">
+        html += `<hr><div class="section">
       <div class="section-header">
         <div class="section-dot"></div>
         <span class="section-label">Documents (${allDocs.length})</span>
@@ -332,12 +321,11 @@
 
         html += `</div></div>`;
 
-        // ── Other Sessions with HB123 ──────────────────────────────────────────
         if (allResults.length > 1) {
-            html += `<div class="section">
+            html += `<hr><div class="section">
         <div class="section-header">
           <div class="section-dot"></div>
-          <span class="section-label">Other Sessions with HB 123 (${allResults.length - 1})</span>
+          <span class="section-label">Other Sessions with ${billNumber} (${allResults.length - 1})</span>
         </div>
         <div class="section-body">
           <div class="kv-grid">`;
@@ -364,8 +352,7 @@
     </div>`;
     }
 
-    // Allow pressing Enter in input
-    document.getElementById('apiKey').addEventListener('keydown', e => {
+    document.getElementById('getBill').addEventListener('keydown', e => {
         if (e.key === 'Enter') fetchBill();
     });
 </script>
