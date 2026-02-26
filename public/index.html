@@ -78,57 +78,32 @@
         return dt.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
     }
 
-    fetchBill();
-    async function fetchBill() {
-        const searchData = await (await fetch('/api/bill')).json();
-        if (searchData.error) throw new Error(searchData.error);
-        const billNumber = document.getElementById('billNo').value.trim();
-        if (!key) { setStatus('Please enter the bill number.', true); return; }
+async function fetchBill() {
+  const billNumber = document.getElementById('billNo').value.trim();
+  if (!billNumber) { setStatus('Please enter a bill number.', true); return; }
 
-        setStatus('');
-        setLoading(true);
-        document.getElementById('bill-content').style.display = 'none';
-        document.getElementById('bill-content').innerHTML = '';
-        document.getElementById('fetchBtn').disabled = true;
+  setStatus('');
+  setLoading(true);
+  document.getElementById('bill-content').style.display = 'none';
+  document.getElementById('bill-content').innerHTML = '';
+  document.getElementById('fetchBtn').disabled = true;
 
-        try {
-            const searchUrl = `https://api.legiscan.com/?key=${encodeURIComponent(key)}&op=search&state=PA&bill=${billNumber}`;
-            const searchRes = await fetch(searchUrl);
-            const searchData = await searchRes.json();
+  try {
+    const searchData = await (await fetch(`/api/bill?bill=${encodeURIComponent(billNumber)}`)).json();
+    if (searchData.error) throw new Error(searchData.error);
 
-            if (searchData.status === 'ERROR') {
-                throw new Error(searchData.alert?.message || 'LegiScan API returned an error.');
-            }
+    const bill = searchData.bill;
+    const bills = searchData.allResults;
 
-            const results = searchData.searchresult;
-            const summary = results.summary;
-
-        const bill = searchData.bill;
-        const bills = searchData.allResults;
-            const topBill = bills[0];
-            const billId = topBill.bill_id;
-
-            setStatus(`Found bill (ID: ${billId}). Loading full details...`);
-
-            const billUrl = `https://api.legiscan.com/?key=${encodeURIComponent(key)}&op=getBill&id=${billId}`;
-            const billRes = await fetch(billUrl);
-            const billData = await billRes.json();
-
-            if (billData.status === 'ERROR') {
-                throw new Error(billData.alert?.message || 'Could not retrieve bill details.');
-            }
-
-            const bill = billData.bill;
-            setStatus('');
-            renderBill(bill, bills);
-
-        } catch (err) {
-            setStatus('Error: ' + err.message, true);
-        } finally {
-            setLoading(false);
-            document.getElementById('fetchBtn').disabled = false;
-        }
-    }
+    setStatus('');
+    renderBill(bill, bills);
+  } catch (err) {
+    setStatus('Error: ' + err.message, true);
+  } finally {
+    setLoading(false);
+    document.getElementById('fetchBtn').disabled = false;
+  }
+}
 
     function renderBill(bill, allResults) {
         const content = document.getElementById('bill-content');
