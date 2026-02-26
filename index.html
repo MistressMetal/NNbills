@@ -80,8 +80,8 @@
 
     fetchBill();
     async function fetchBill() {
-        const key = process.env.LEGI_KEY;
-
+        const searchData = await (await fetch('/api/bill')).json();
+        if (searchData.error) throw new Error(searchData.error);
         const billNumber = document.getElementById('billNo').value.trim();
         if (!key) { setStatus('Please enter the bill number.', true); return; }
 
@@ -103,10 +103,8 @@
             const results = searchData.searchresult;
             const summary = results.summary;
 
-            const billKeys = Object.keys(results).filter(k => k !== 'summary');
-            if (!billKeys.length) throw new Error('No results found for PA ${billNumber}.');
-
-            const bills = billKeys.map(k => results[k]).sort((a, b) => b.session_id - a.session_id);
+        const bill = searchData.bill;
+        const bills = searchData.allResults;
             const topBill = bills[0];
             const billId = topBill.bill_id;
 
