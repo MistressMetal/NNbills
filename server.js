@@ -8,8 +8,9 @@ const API_KEY = process.env.LEGI_KEY;
 app.use(express.static(path.join(__dirname, 'public')));
 
 app.get('/api/bill', async (req, res) => {
+  const billNumber = req.query.bill;
   try {
-    const searchUrl = `https://api.legiscan.com/?key=${API_KEY}&op=search&state=PA&bill=HB123`;
+    const searchUrl = `https://api.legiscan.com/?key=${API_KEY}&op=search&state=PA&bill=${billNumber}`;
     const searchRes = await fetch(searchUrl);
     const searchData = await searchRes.json();
 
