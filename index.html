@@ -80,7 +80,7 @@
 
     fetchBill();
     async function fetchBill() {
-        const key = ${{ LEGI_KEY }};
+        const key = ${ LEGI_KEY };
 
         const billNumber = document.getElementById('billNo').value.trim();
         if (!key) { setStatus('Please enter the bill number.', true); return; }
